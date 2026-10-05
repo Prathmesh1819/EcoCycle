@@ -1,0 +1,91 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && (
+        getUserData().role == 'admin' || 
+        request.auth.token.email == 'admin@ecocycle.ai'
+      );
+    }
+
+    function isCollector() {
+      return isAuthenticated() && (
+        getUserData().role == 'collector' || 
+        getUserData().role == 'agent'
+      );
+    }
+
+    // Users Collection - Diagnostic Minimum Secure Rule
+    match /users/{uid} {
+      allow create: if request.auth != null
+                    && request.auth.uid == uid;
+
+      allow read: if request.auth != null
+                  && request.auth.uid == uid;
+
+      allow update: if request.auth != null
+                    && request.auth.uid == uid;
+
+      allow delete: if isAdmin();
+    }
+
+    // Waste Reports Collection
+    match /waste_reports/{reportId} {
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin() || isCollector());
+      allow update: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin() || isCollector());
+      allow delete: if isAdmin();
+    }
+
+    // Collection Requests Collection
+    match /collection_requests/{requestId} {
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin() || isCollector());
+      allow update: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin() || isCollector());
+      allow delete: if isAdmin();
+    }
+
+    // Recycling Records Collection
+    match /recycling_records/{recordId} {
+      allow create: if isAdmin() || isCollector();
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin() || isCollector());
+      allow update: if isAdmin() || isCollector();
+      allow delete: if isAdmin();
+    }
+
+    // Rewards Collection
+    match /rewards/{rewardId} {
+      allow read: if isAuthenticated();
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Notifications Collection
+    match /notifications/{notificationId} {
+      allow create: if isAdmin() || isCollector();
+      allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      allow update: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      allow delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+    }
+
+    // Feedback Collection
+    match /feedback/{feedbackId} {
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow update, delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+    }
+  }
+}
